@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Universe — Photography Portfolio</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Loading screen -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-orb"></div>
+      <p class="loader-text">Entering the universe of memories...</p>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="hud-crosshair"></div>
+
+    <!-- Galaxy label that appears on proximity -->
+    <div id="galaxy-label">
+      <span id="galaxy-name"></span>
+      <span id="galaxy-hint">Press <kbd>E</kbd> to enter</span>
+    </div>
+
+    <!-- Controls hint (bottom-left) -->
+    <div id="controls-hint">
+      <span>WASD / ↑↓←→ Move</span>
+      <span>E Enter galaxy</span>
+      <span>ESC Exit galaxy</span>
+    </div>
+  </div>
+
+  <!-- Photo lightbox -->
+  <div id="lightbox" class="hidden">
+    <button id="lightbox-close">✕</button>
+    <img id="lightbox-img" src="" alt="" />
+    <p id="lightbox-caption"></p>
+  </div>
+
+  <!-- Inside-galaxy overlay info -->
+  <div id="galaxy-ui" class="hidden">
+    <button id="galaxy-exit">← Exit galaxy</button>
+    <h2 id="galaxy-title"></h2>
+  </div>
+
+  <!-- Canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <!-- App modules -->
+  <script src="js/controls.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/galaxy.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/universe.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
