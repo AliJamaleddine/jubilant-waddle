@@ -1,50 +1,45 @@
 /**
- * main.js — Entry point.
- * Wires all modules together and runs the game loop.
+ * main.js — Entry point. Wires modules, runs the loop.
  */
-
 (function () {
   'use strict';
 
-  const canvas = document.getElementById('canvas');
-  const loader = document.getElementById('loader');
-
-  let sceneManager, controls, player, universe, clock;
+  let sm, controls, player, universe, clock;
 
   function init() {
-    clock        = new THREE.Clock();
-    controls     = new Controls();
-    sceneManager = new SceneManager(canvas);
-    player       = new Player(sceneManager.scene, controls);
-    universe     = new Universe(sceneManager, player, controls);
+    const canvas = document.getElementById('canvas');
 
-    // Add lights (defined in SceneManager but added to scene here)
-    sceneManager.scene.add(sceneManager.ambientLight);
-    sceneManager.scene.add(sceneManager.dirLight);
+    clock    = new THREE.Clock();
+    controls = new Controls();
+    sm       = new SceneManager(canvas);
+    player   = new Player(sm.scene, controls);
+    universe = new Universe(sm, player, controls);
+
+    // Add lights (created in SceneManager, added here)
+    sm.scene.add(sm.ambientLight);
+    sm.scene.add(sm.dirLight);
 
     requestAnimationFrame(loop);
-
-    // Small delay so WebGL finishes first frame before fading loader
-    setTimeout(hideLoader, 700);
+    setTimeout(hideLoader, 600);
   }
 
   function hideLoader() {
+    const loader = document.getElementById('loader');
     loader.classList.add('fade-out');
-    setTimeout(() => { loader.style.display = 'none'; }, 800);
+    setTimeout(() => { loader.style.display = 'none'; }, 700);
   }
 
   function loop() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t  = clock.getElapsedTime();
 
-    // Only update player movement when in space (not inside a galaxy)
-    // player.movable flag handles this internally, but we always call
-    // update so the float animation keeps running
-    player.update(dt, t, sceneManager.camera);
+    // Player always animates; movement gated by player.movable internally
+    player.update(dt, t, sm.camera);
 
-    universe.update(dt, t);
+    // Universe handles portals + camera (skips if in gallery state)
+    universe.update(t);
 
-    sceneManager.render(sceneManager.scene);
+    sm.render();
 
     requestAnimationFrame(loop);
   }

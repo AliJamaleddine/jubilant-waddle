@@ -1,130 +1,113 @@
 /**
- * scene.js — Minimalist white world.
- * The background is a clean warm white void.
- * Only sparse dust particles give a sense of infinite space.
+ * scene.js — White minimal world.
+ * Ground plane with a very subtle grid shader.
+ * Bright flat lighting. No fog, no nebula.
  */
 
 class SceneManager {
   constructor(canvas) {
     this.canvas = canvas;
-
     this._buildRenderer();
     this._buildCamera();
     this._buildLights();
-    this._buildDust();
+    this._buildGround();
 
     this.scene = new THREE.Scene();
-    // Warm white fog — softens the edges of the white void
-    this.scene.fog = new THREE.FogExp2(0xf2efe8, 0.007);
+    this.scene.background = new THREE.Color(0xf3f0e8);
 
-    this.scene.add(this.dustMesh);
+    this.scene.add(this.ground);
 
     window.addEventListener('resize', this._onResize.bind(this));
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────
+  // ─── Renderer ────────────────────────────────────────────────────────────
 
   _buildRenderer() {
-    this.renderer = new THREE.WebGLRenderer({
-      canvas:    this.canvas,
-      antialias: true,
-    });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputEncoding = THREE.sRGBEncoding;
-    // Warm white: like sunlit paper
-    this.renderer.setClearColor(0xf2efe8, 1);
+    this.renderer.setClearColor(0xf3f0e8, 1);
   }
+
+  // ─── Camera ──────────────────────────────────────────────────────────────
 
   _buildCamera() {
     this.camera = new THREE.PerspectiveCamera(
-      60,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      800
+      55, window.innerWidth / window.innerHeight, 0.1, 600
     );
-    this.camera.position.set(0, 8, 50);
+    // Starting position — follows player from universe.js
+    this.camera.position.set(0, 18, 30);
     this.camera.lookAt(0, 0, 0);
   }
 
+  // ─── Lights ──────────────────────────────────────────────────────────────
+
   _buildLights() {
-    // Bright flat ambient — no drama in the base world
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 3.0);
-    // Warm directional light, very soft
-    this.dirLight = new THREE.DirectionalLight(0xfff8f0, 0.6);
-    this.dirLight.position.set(30, 60, 20);
+    // Bright, even ambient — the world feels clean and lit
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 2.8);
+    // Soft warm directional — adds just a hint of depth on the figure
+    this.dirLight = new THREE.DirectionalLight(0xfff5e4, 0.7);
+    this.dirLight.position.set(20, 40, 15);
   }
 
-  _buildDust() {
-    // 600 tiny pale dust motes give depth to the white void
-    const count     = 600;
-    const positions = new Float32Array(count * 3);
-    const sizes     = new Float32Array(count);
+  // ─── Ground ──────────────────────────────────────────────────────────────
 
-    for (let i = 0; i < count; i++) {
-      positions[i*3]   = (Math.random() - 0.5) * 240;
-      positions[i*3+1] = (Math.random() - 0.5) * 100;
-      positions[i*3+2] = (Math.random() - 0.5) * 240;
-      sizes[i]         = 0.6 + Math.random() * 1.8;
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('size',     new THREE.BufferAttribute(sizes, 1));
-
-    this._dustMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime:      { value: 0 },
-        uPixelRatio:{ value: Math.min(window.devicePixelRatio, 2) },
-      },
+  _buildGround() {
+    const geo = new THREE.PlaneGeometry(400, 400, 1, 1);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uCamPos: { value: new THREE.Vector3() } },
       vertexShader: `
-        attribute float size;
-        uniform float uTime;
-        uniform float uPixelRatio;
-
+        varying vec3 vWorld;
         void main() {
-          vec3 pos = position;
-          // Slow organic drift
-          pos.y += sin(uTime * 0.18 + position.x * 0.05) * 0.5;
-          pos.x += cos(uTime * 0.14 + position.z * 0.04) * 0.3;
-
-          vec4 mvPos    = modelViewMatrix * vec4(pos, 1.0);
-          gl_Position   = projectionMatrix * mvPos;
-          gl_PointSize  = size * uPixelRatio * (60.0 / -mvPos.z);
+          vec4 wp  = modelMatrix * vec4(position, 1.0);
+          vWorld   = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
         }
       `,
       fragmentShader: `
+        varying vec3 vWorld;
+        uniform vec3 uCamPos;
+
         void main() {
-          vec2  uv   = gl_PointCoord - 0.5;
-          float dist = length(uv);
-          if (dist > 0.5) discard;
-          // Very faint — just enough to feel depth
-          float alpha = smoothstep(0.5, 0.0, dist) * 0.12;
-          gl_FragColor = vec4(0.55, 0.52, 0.48, alpha);
+          // Subtle grid every 5 units
+          vec2  g    = abs(fract(vWorld.xz * 0.2) - 0.5);
+          float line = min(g.x, g.y);
+          float grid = 1.0 - smoothstep(0.0, 0.04, line);
+
+          // Radial fade so grid disappears at horizon
+          float dist = length(vWorld.xz - uCamPos.xz);
+          float fade = 1.0 - smoothstep(30.0, 90.0, dist);
+
+          vec3 base  = vec3(0.957, 0.941, 0.91);
+          vec3 lineC = vec3(0.88, 0.865, 0.84);
+          vec3 col   = mix(base, lineC, grid * fade * 0.55);
+
+          gl_FragColor = vec4(col, 1.0);
         }
       `,
-      transparent: true,
-      depthWrite:  false,
+      side: THREE.FrontSide,
     });
-
-    this.dustMesh = new THREE.Points(geo, this._dustMat);
+    this.ground    = new THREE.Mesh(geo, mat);
+    this.ground.rotation.x = -Math.PI / 2;
+    this._groundMat = mat;
   }
 
   // ─── Update / Render ─────────────────────────────────────────────────────
 
-  update(t) {
-    this._dustMat.uniforms.uTime.value = t;
+  update() {
+    // Pass camera position to ground shader so the grid fades at distance
+    this._groundMat.uniforms.uCamPos.value.copy(this.camera.position);
   }
 
-  render(scene) {
-    this.renderer.render(scene, this.camera);
+  render() {
+    this.renderer.render(this.scene, this.camera);
   }
 
   // ─── Resize ──────────────────────────────────────────────────────────────
 
   _onResize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = window.innerWidth, h = window.innerHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);

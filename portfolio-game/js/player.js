@@ -1,7 +1,15 @@
 /**
- * player.js — Tiny dark minimal sphere.
- * Very simple: a small dark dot floating in the white void.
- * No glow. Just a clean silhouette + subtle shadow disc.
+ * player.js — Simple stick-figure character.
+ *
+ * Anatomy (Y from ground):
+ *   1.65  head (sphere)
+ *   1.05  torso (cylinder)
+ *   1.30  shoulder pivot → arms
+ *   0.72  hip pivot      → legs
+ *
+ * Movement is purely on the XZ plane.
+ * Character rotates to face movement direction.
+ * Walk animation swings limbs via pivot Groups.
  */
 
 class Player {
@@ -9,80 +17,109 @@ class Player {
     this.scene    = scene;
     this.controls = controls;
 
-    this.speed    = 14;
-    this.damping  = 0.86;
+    this.speed   = 12;      // units/s
+    this.damping = 0.82;
     this.velocity = new THREE.Vector3();
-
-    this._floatAmp  = 0.1;
-    this._floatFreq = 1.1;
-
-    // Whether the player is allowed to move (disabled inside galaxy)
     this.movable  = true;
 
     this.group = new THREE.Group();
-    this._buildMesh();
+    this._buildFigure();
     scene.add(this.group);
 
-    // Start slightly in front of the camera
-    this.group.position.set(0, 0, 28);
+    // Start position
+    this.group.position.set(0, 0, 18);
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────
+  // ─── Build figure ────────────────────────────────────────────────────────
 
-  _buildMesh() {
-    // Core: small dark charcoal sphere — clean, iconic
-    const coreGeo = new THREE.SphereGeometry(0.26, 24, 24);
-    const coreMat = new THREE.MeshStandardMaterial({
-      color:     0x18181b,
-      roughness: 0.45,
-      metalness: 0.05,
+  _buildFigure() {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x18181b, roughness: 0.45, metalness: 0.0,
     });
-    this.coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    this.group.add(this.coreMesh);
 
-    // Flat shadow disc below — grounds the floating sphere visually
-    const shadowGeo = new THREE.CircleGeometry(0.22, 20);
+    const M = (geo) => new THREE.Mesh(geo, mat);
+
+    // Head
+    const head = M(new THREE.SphereGeometry(0.2, 10, 10));
+    head.position.y = 1.65;
+    this.group.add(head);
+
+    // Torso
+    const torso = M(new THREE.CylinderGeometry(0.07, 0.09, 0.65, 7));
+    torso.position.y = 1.02;
+    this.group.add(torso);
+
+    // ── Arms (pivot at shoulder) ────────────────
+    this.leftArmPivot  = new THREE.Group();
+    this.rightArmPivot = new THREE.Group();
+    this.leftArmPivot.position.set(-0.13, 1.32, 0);
+    this.rightArmPivot.position.set( 0.13, 1.32, 0);
+
+    const armGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.44, 6);
+    const lArm = M(armGeo); lArm.position.y = -0.22;
+    const rArm = M(armGeo); rArm.position.y = -0.22;
+    this.leftArmPivot.add(lArm);
+    this.rightArmPivot.add(rArm);
+
+    // Rest angle: arms hang open slightly
+    this.leftArmPivot.rotation.z  =  0.28;
+    this.rightArmPivot.rotation.z = -0.28;
+
+    this.group.add(this.leftArmPivot);
+    this.group.add(this.rightArmPivot);
+
+    // ── Legs (pivot at hip) ─────────────────────
+    this.leftLegPivot  = new THREE.Group();
+    this.rightLegPivot = new THREE.Group();
+    this.leftLegPivot.position.set(-0.1, 0.72, 0);
+    this.rightLegPivot.position.set( 0.1, 0.72, 0);
+
+    const legGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.72, 7);
+    const lLeg = M(legGeo); lLeg.position.y = -0.36;
+    const rLeg = M(legGeo); rLeg.position.y = -0.36;
+    this.leftLegPivot.add(lLeg);
+    this.rightLegPivot.add(rLeg);
+
+    this.group.add(this.leftLegPivot);
+    this.group.add(this.rightLegPivot);
+
+    // Shadow disc on ground
+    const shadowGeo = new THREE.CircleGeometry(0.28, 16);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color:       0x000000,
-      transparent: true,
-      opacity:     0.07,
-      depthWrite:  false,
+      color: 0x000000, transparent: true, opacity: 0.08, depthWrite: false,
     });
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     this.shadowMesh.rotation.x = -Math.PI / 2;
-    this.shadowMesh.position.y = -0.38;
+    this.shadowMesh.position.y = 0.01;
     this.group.add(this.shadowMesh);
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
   get position() { return this.group.position; }
-
   setMovable(v) { this.movable = v; }
-  setVisible(v) { this.group.visible = v; }
 
   update(dt, t, camera) {
-    if (this.movable) this._handleMovement(dt, camera);
-    this._animateFloat(t);
+    if (this.movable) this._move(dt, camera);
+    this._animate(t);
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────
+  // ─── Movement ────────────────────────────────────────────────────────────
 
-  _handleMovement(dt, camera) {
+  _move(dt, camera) {
     const k = this.controls.keys;
 
-    // Direction relative to camera's horizontal look
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-    forward.y = 0;
-    forward.normalize();
+    // Flat direction relative to camera look
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    fwd.y = 0; fwd.normalize();
 
     const right = new THREE.Vector3();
-    right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    right.crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
 
     const move = new THREE.Vector3();
-    if (k.forward)  move.add(forward);
-    if (k.backward) move.sub(forward);
+    if (k.forward)  move.add(fwd);
+    if (k.backward) move.sub(fwd);
     if (k.right)    move.add(right);
     if (k.left)     move.sub(right);
 
@@ -92,27 +129,42 @@ class Player {
     }
 
     this.velocity.multiplyScalar(this.damping);
-    this.group.position.add(this.velocity);
+    // Only move in XZ — Y stays 0 (ground)
+    this.group.position.x += this.velocity.x;
+    this.group.position.z += this.velocity.z;
 
-    // Subtle tilt while moving
-    if (this.velocity.lengthSq() > 0.0001) {
-      this.group.rotation.x += (-this.velocity.z * 0.5 - this.group.rotation.x) * 0.1;
-      this.group.rotation.z += ( this.velocity.x * 0.5 - this.group.rotation.z) * 0.1;
-    } else {
-      this.group.rotation.x *= 0.88;
-      this.group.rotation.z *= 0.88;
+    // Rotate character to face movement direction
+    if (this.velocity.lengthSq() > 0.002) {
+      const targetAngle = Math.atan2(this.velocity.x, this.velocity.z);
+      let diff = targetAngle - this.group.rotation.y;
+      // Normalise angle diff to [-π, π]
+      while (diff >  Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.group.rotation.y += diff * 0.14;
     }
   }
 
-  _animateFloat(t) {
-    const floatY = Math.sin(t * this._floatFreq) * this._floatAmp;
-    this.coreMesh.position.y = floatY;
+  // ─── Walk animation ──────────────────────────────────────────────────────
 
-    // Shadow shrinks and fades as sphere rises
-    const shadowT = 1 - (floatY + this._floatAmp) / (this._floatAmp * 2);
-    this.shadowMesh.position.y  = -0.38;
-    this.shadowMesh.material.opacity = 0.04 + shadowT * 0.06;
-    const shadowScale = 0.85 + shadowT * 0.3;
-    this.shadowMesh.scale.setScalar(shadowScale);
+  _animate(t) {
+    const isMoving = this.velocity.lengthSq() > 0.005;
+    const freq = 5.5;
+    const legAmp = 0.52, armAmp = 0.38;
+
+    if (isMoving) {
+      this.leftLegPivot.rotation.x  =  Math.sin(t * freq) * legAmp;
+      this.rightLegPivot.rotation.x = -Math.sin(t * freq) * legAmp;
+      this.leftArmPivot.rotation.x  = -Math.sin(t * freq) * armAmp;
+      this.rightArmPivot.rotation.x =  Math.sin(t * freq) * armAmp;
+    } else {
+      // Ease back to rest
+      this.leftLegPivot.rotation.x  *= 0.84;
+      this.rightLegPivot.rotation.x *= 0.84;
+      this.leftArmPivot.rotation.x  *= 0.84;
+      this.rightArmPivot.rotation.x *= 0.84;
+    }
+
+    // Subtle idle bob
+    this.group.position.y = Math.sin(t * 1.9) * 0.022;
   }
 }
