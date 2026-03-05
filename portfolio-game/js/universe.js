@@ -1,51 +1,49 @@
 /**
- * universe.js
- * Orchestrates: galaxies, player, camera follow, proximity detection,
- * galaxy enter/exit transitions, and the in-galaxy photo world.
+ * universe.js — Orchestrates the whole experience.
+ *
+ * Responsibilities:
+ *  - Define and position all 5 themed galaxies
+ *  - Third-person camera follow (space mode)
+ *  - Proximity detection + label display
+ *  - Galaxy enter (warp) / exit transitions
+ *  - Photo world build / destroy inside a galaxy
+ *  - Raycaster photo hover + click → lightbox
  */
 
 class Universe {
-  /**
-   * @param {SceneManager} sceneManager
-   * @param {Player}       player
-   * @param {Controls}     controls
-   */
   constructor(sceneManager, player, controls) {
     this.sm       = sceneManager;
     this.player   = player;
     this.controls = controls;
 
-    this.galaxies       = [];
-    this.nearGalaxy     = null;   // Galaxy the player is currently near
-    this.activeGalaxy   = null;   // Galaxy the player has entered
-    this.inGalaxy       = false;
+    this.galaxies     = [];
+    this.nearGalaxy   = null;
+    this.activeGalaxy = null;
+    this.inGalaxy     = false;
 
-    // Camera follow config (third-person)
-    this._camOffset      = new THREE.Vector3(0, 6, 18);
-    this._camTarget      = new THREE.Vector3();
-    this._camCurrentPos  = new THREE.Vector3();
-    this._camLerpSpeed   = 0.06;
+    // Camera follow (space mode)
+    this._camOffset    = new THREE.Vector3(0, 7, 20);
+    this._camLerpSpeed = 0.055;
 
-    // DOM references
+    // DOM refs
     this._labelEl      = document.getElementById('galaxy-label');
     this._nameEl       = document.getElementById('galaxy-name');
     this._galaxyUI     = document.getElementById('galaxy-ui');
     this._galaxyTitle  = document.getElementById('galaxy-title');
     this._exitBtn      = document.getElementById('galaxy-exit');
-
     this._exitBtn.addEventListener('click', () => this._exitGalaxy());
 
-    // Photo world state
+    // Photo world
     this._photoMeshes  = [];
     this._photoGroup   = null;
     this._hoveredPhoto = null;
 
-    // Raycaster for photo hover/click
+    // Raycaster
     this._raycaster = new THREE.Raycaster();
-    this._mouse     = new THREE.Vector2();
+    this._mouse     = new THREE.Vector2(9999, 9999); // off-screen default
 
     window.addEventListener('mousemove', e => {
-      this._mouse.x = (e.clientX / window.innerWidth)  * 2 - 1;
+      this._mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
       this._mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     });
 
@@ -55,86 +53,84 @@ class Universe {
       }
     });
 
-    // Lightbox close
     document.getElementById('lightbox-close').addEventListener('click', () => {
       document.getElementById('lightbox').classList.add('hidden');
     });
 
     this._buildGalaxies();
-    this._positionStarfield();
   }
 
-  // ─── Galaxy definitions ─────────────────────────────────────────────────
+  // ─── Galaxy definitions ──────────────────────────────────────────────────
 
   _buildGalaxies() {
     const defs = [
       {
-        name:   'Travel',
-        pos:    new THREE.Vector3(-35, 4, -20),
-        colors: ['#ff9a3c', '#ff6b6b', '#ffd93d', '#c44dff'],
-        radius: 10,
-        armCount: 3,
-        photos: this._generatePlaceholderPhotos('Travel', 6),
+        name:     'Mountains',
+        theme:    'mountains',
+        pos:      new THREE.Vector3(-48, 2, -38),
+        // Dark rock → slate → stone → snow-grey → ice blue
+        colors:   ['#1c2526', '#3d5460', '#708090', '#b0bec5', '#90caf9'],
+        radius:   11,
+        rotSpeed: 0.035,
       },
       {
-        name:   'Portraits',
-        pos:    new THREE.Vector3(40, -5, -30),
-        colors: ['#43e8f4', '#1976d2', '#8066ff', '#00bcd4'],
-        radius: 8,
-        armCount: 2,
-        photos: this._generatePlaceholderPhotos('Portraits', 5),
+        name:     'Ocean',
+        theme:    'ocean',
+        pos:      new THREE.Vector3(46, -3, -28),
+        // Deep navy → royal blue → cyan → turquoise → foam
+        colors:   ['#03045e', '#0077b6', '#00b4d8', '#48cae4', '#caf0f8'],
+        radius:   12,
+        rotSpeed: 0.055,
       },
       {
-        name:   'Night',
-        pos:    new THREE.Vector3(5, 8, -60),
-        colors: ['#7b2fff', '#e040fb', '#2196f3', '#03dac6'],
-        radius: 12,
-        armCount: 4,
-        photos: this._generatePlaceholderPhotos('Night', 7),
+        name:     'Portraits',
+        theme:    'portraits',
+        pos:      new THREE.Vector3(2, 6, -72),
+        // Terracotta → amber → rose → mauve → lavender
+        colors:   ['#c0392b', '#e67e22', '#f1948a', '#d7bde2', '#c39bd3'],
+        radius:   9,
+        rotSpeed: 0.06,
+      },
+      {
+        name:     'Cities',
+        theme:    'cities',
+        pos:      new THREE.Vector3(-52, -4, -68),
+        // Dark charcoal → steel → electric blue → neon cyan → white
+        colors:   ['#14213d', '#495057', '#4361ee', '#4cc9f0', '#f0f4ff'],
+        radius:   11,
+        rotSpeed: 0.028,
+      },
+      {
+        name:     'Forest',
+        theme:    'forest',
+        pos:      new THREE.Vector3(56, 4, -58),
+        // Deep pine → forest → emerald → light leaf → pale lime
+        colors:   ['#1b4332', '#2d6a4f', '#52b788', '#95d5b2', '#d8f3dc'],
+        radius:   11,
+        rotSpeed: 0.048,
       },
     ];
 
     for (const def of defs) {
       const galaxy = new Galaxy({
-        name:         def.name,
+        ...def,
         position:     def.pos,
-        colors:       def.colors,
-        radius:       def.radius,
-        armCount:     def.armCount,
-        particleCount:4000,
-        photos:       def.photos,
+        particleCount:5000,
+        photos:       this._placeholderPhotos(def.name, 6),
       });
       this.galaxies.push(galaxy);
       this.sm.scene.add(galaxy.group);
     }
   }
 
-  /**
-   * Generate placeholder photo entries.
-   * In production, replace with real image paths.
-   */
-  _generatePlaceholderPhotos(category, count) {
-    const photos = [];
-    for (let i = 0; i < count; i++) {
-      photos.push({
-        // Use picsum for beautiful placeholder images
-        url:     `https://picsum.photos/seed/${category}${i}/800/600`,
-        caption: `${category} — ${String(i+1).padStart(2,'0')}`,
-        thumb:   `https://picsum.photos/seed/${category}${i}/400/300`,
-      });
-    }
-    return photos;
+  _placeholderPhotos(category, count) {
+    return Array.from({ length: count }, (_, i) => ({
+      url:     `https://picsum.photos/seed/${category}${i+1}/800/600`,
+      caption: `${category} — ${String(i + 1).padStart(2, '0')}`,
+    }));
   }
 
-  // ─── Starfield follows camera ────────────────────────────────────────────
-
-  _positionStarfield() {
-    // Starfield & nebula are added to scene but we update their position
-    // to track camera center so they always surround the viewer.
-    this._starfieldFollowsCamera = true;
-  }
-
-  // ─── Update (called every frame) ────────────────────────────────────────
+  // ─── Main update ────────────────────────────────────────────────────────
 
   update(dt, t) {
     if (this.inGalaxy) {
@@ -142,7 +138,6 @@ class Universe {
     } else {
       this._updateSpaceMode(dt, t);
     }
-
     this.sm.update(t);
   }
 
@@ -151,112 +146,109 @@ class Universe {
   _updateSpaceMode(dt, t) {
     const playerPos = this.player.position;
 
-    // Camera follow (smooth third-person)
-    this._updateCamera(dt);
+    // Smooth third-person camera follow
+    const camTarget = new THREE.Vector3(
+      playerPos.x + this._camOffset.x,
+      playerPos.y + this._camOffset.y,
+      playerPos.z + this._camOffset.z
+    );
+    this.sm.camera.position.lerp(camTarget, this._camLerpSpeed);
+    this.sm.camera.lookAt(playerPos.x, playerPos.y, playerPos.z);
 
-    // Starfield/nebula follow camera so they always fill the background
-    const cam = this.sm.camera;
-    this.sm.starfieldMesh.position.copy(cam.position);
-    this.sm.nebulaMesh.position.copy(cam.position);
+    // Dust motes follow camera for infinite-void feel
+    this.sm.dustMesh.position.copy(this.sm.camera.position);
 
-    // Evaluate galaxy proximity
+    // Proximity detection
     let closestDist   = Infinity;
     let closestGalaxy = null;
 
     for (const galaxy of this.galaxies) {
-      const d = playerPos.distanceTo(galaxy.group.position);
-      // Proximity 0 = far (>enterThresh), 1 = right at enter boundary
-      const enterThresh = galaxy.radius + 8;
-      const glowThresh  = galaxy.radius + 20;
-      const prox        = THREE.MathUtils.clamp(
-        1 - (d - enterThresh) / (glowThresh - enterThresh), 0, 1
+      const d          = playerPos.distanceTo(galaxy.group.position);
+      const enterR     = galaxy.radius + 7;
+      const glowR      = galaxy.radius + 22;
+      const proximity  = THREE.MathUtils.clamp(
+        1 - (d - enterR) / (glowR - enterR), 0, 1
       );
 
-      galaxy.update(dt, t, prox);
+      galaxy.update(dt, t, proximity);
 
-      if (d < glowThresh && d < closestDist) {
+      if (d < glowR && d < closestDist) {
         closestDist   = d;
         closestGalaxy = galaxy;
       }
     }
 
-    // Show/hide label
-    if (closestGalaxy && closestDist < closestGalaxy.radius + 18) {
+    // Label
+    if (closestGalaxy && closestDist < closestGalaxy.radius + 20) {
       this.nearGalaxy = closestGalaxy;
       this._nameEl.textContent = closestGalaxy.name;
+      // Set CSS accent color so the underline rule matches the galaxy
+      document.documentElement.style.setProperty(
+        '--galaxy-color', closestGalaxy.accentHex
+      );
       this._labelEl.classList.add('visible');
     } else {
       this.nearGalaxy = null;
       this._labelEl.classList.remove('visible');
     }
 
-    // E key = enter galaxy
+    // E = enter nearest galaxy
     if (this.controls.keys.interact && this.nearGalaxy) {
       this.controls.consumeInteract();
       this._enterGalaxy(this.nearGalaxy);
+      return;
     }
-
-    // ESC in space = nothing (already outside)
     if (this.controls.keys.escape) this.controls.consumeEscape();
-  }
-
-  _updateCamera(dt) {
-    const pp = this.player.position;
-
-    // Target: behind and above player
-    this._camTarget.set(
-      pp.x + this._camOffset.x,
-      pp.y + this._camOffset.y,
-      pp.z + this._camOffset.z
-    );
-
-    // Lazy follow
-    this.sm.camera.position.lerp(this._camTarget, this._camLerpSpeed);
-    this.sm.camera.lookAt(pp.x, pp.y, pp.z);
   }
 
   // ─── Galaxy enter / exit ─────────────────────────────────────────────────
 
   _enterGalaxy(galaxy) {
-    this.inGalaxy    = true;
+    this.inGalaxy     = true;
     this.activeGalaxy = galaxy;
 
-    // Hide space HUD elements
+    // Freeze player movement while inside
+    this.player.setMovable(false);
+
     this._labelEl.classList.remove('visible');
 
-    // Warp transition
-    this._playWarpEffect(() => {
-      // After warp completes:
-      this._buildPhotoWorld(galaxy);
-      this._showGalaxyUI(galaxy);
-    });
+    // Warp: FOV zoom-in punch, then snap
+    const cam = this.sm.camera;
+    gsap.timeline()
+      .to(cam, {
+        fov: 105,
+        duration: 0.5,
+        ease: 'power2.in',
+        onUpdate: () => cam.updateProjectionMatrix(),
+      })
+      .to(cam, {
+        fov: 60,
+        duration: 0,
+        onUpdate: () => cam.updateProjectionMatrix(),
+      })
+      .call(() => {
+        this._buildPhotoWorld(galaxy);
+        this._showGalaxyUI(galaxy);
+      });
   }
 
   _exitGalaxy() {
     if (!this.inGalaxy) return;
 
-    // Clean up photo world
     this._destroyPhotoWorld();
     this._hideGalaxyUI();
 
-    // Quick fade out
-    gsap.to('#canvas', { opacity: 0.3, duration: 0.3, onComplete: () => {
-      this.inGalaxy     = false;
-      this.activeGalaxy = null;
-      gsap.to('#canvas', { opacity: 1, duration: 0.6 });
-    }});
-  }
-
-  _playWarpEffect(onComplete) {
-    // Stars stretch: animate FOV up then snap to galaxy interior
-    const cam = this.sm.camera;
-
-    gsap.timeline()
-      .to(cam, { fov: 120, duration: 0.6, ease: 'power2.in',
-        onUpdate: () => cam.updateProjectionMatrix() })
-      .to({}, { duration: 0.1 }) // hold at peak
-      .to(cam, { fov: 65, duration: 0, onUpdate: () => cam.updateProjectionMatrix() })
-      .call(onComplete);
+    // Brief fade, then restore space mode
+    gsap.to('#canvas', {
+      opacity: 0.4,
+      duration: 0.25,
+      onComplete: () => {
+        this.inGalaxy     = false;
+        this.activeGalaxy = null;
+        this.player.setMovable(true);
+        gsap.to('#canvas', { opacity: 1, duration: 0.55 });
+      },
+    });
   }
 
   // ─── Galaxy UI ──────────────────────────────────────────────────────────
@@ -269,10 +261,14 @@ class Universe {
   }
 
   _hideGalaxyUI() {
-    gsap.to('#galaxy-ui', { opacity: 0, duration: 0.3, onComplete: () => {
-      this._galaxyUI.classList.add('hidden');
-      this._galaxyUI.classList.remove('visible');
-    }});
+    gsap.to('#galaxy-ui', {
+      opacity: 0,
+      duration: 0.3,
+      onComplete: () => {
+        this._galaxyUI.classList.remove('visible');
+        this._galaxyUI.classList.add('hidden');
+      },
+    });
   }
 
   // ─── Photo world ────────────────────────────────────────────────────────
@@ -284,80 +280,70 @@ class Universe {
     const photos = galaxy.photos;
     const count  = photos.length;
 
-    // Arrange photos in an orbit ring, facing center
     for (let i = 0; i < count; i++) {
       const angle  = (i / count) * Math.PI * 2;
-      const radius = 14 + (i % 2) * 4;
+      const radius = 13 + (i % 2) * 5;
       const x      = Math.cos(angle) * radius;
       const z      = Math.sin(angle) * radius;
-      const y      = (Math.random() - 0.5) * 5;
+      const y      = (Math.random() - 0.5) * 6;
 
-      const panel = this._createPhotoPanel(photos[i], i);
+      const panel = this._createPhotoPanel(photos[i]);
       panel.position.set(x, y, z);
-
-      // Face the center
       panel.lookAt(0, panel.position.y, 0);
-
-      // Tilt slightly
-      panel.rotation.x += (Math.random() - 0.5) * 0.15;
+      panel.rotation.x += (Math.random() - 0.5) * 0.12;
 
       this._photoGroup.add(panel);
       this._photoMeshes.push(panel);
 
-      // Animate in
+      // Spring-in animation
       panel.scale.setScalar(0.01);
       gsap.to(panel.scale, {
         x: 1, y: 1, z: 1,
-        duration: 0.6,
-        delay: i * 0.08,
-        ease: 'back.out(1.4)',
+        duration: 0.55,
+        delay: i * 0.07,
+        ease: 'back.out(1.5)',
       });
     }
 
-    // Position camera for interior view
+    // Fly camera into gallery position
     gsap.to(this.sm.camera.position, {
-      x: 0, y: 3, z: 30,
-      duration: 1.2,
+      x: 0, y: 2, z: 32,
+      duration: 1.0,
       ease: 'power2.out',
     });
-    this.sm.camera.lookAt(0, 0, 0);
   }
 
-  _createPhotoPanel(photoData, index) {
-    const W = 4.8, H = 3.4;
+  _createPhotoPanel(photoData) {
+    const W = 5.0, H = 3.5;
 
-    // Frame
-    const frameGeo = new THREE.BoxGeometry(W + 0.12, H + 0.12, 0.05);
+    // White Polaroid-style frame
+    const frameGeo = new THREE.BoxGeometry(W + 0.3, H + 0.6, 0.04);
     const frameMat = new THREE.MeshStandardMaterial({
-      color:    0x1a1a2e,
-      roughness:0.8,
-      metalness:0.2,
+      color:     0xfafafa,
+      roughness: 0.6,
+      metalness: 0.0,
     });
     const frame = new THREE.Mesh(frameGeo, frameMat);
+    frame.position.y = -0.1; // frame sits slightly lower (Polaroid bottom)
 
-    // Photo plane
+    // Photo surface
     const planeGeo = new THREE.PlaneGeometry(W, H);
     const planeMat = new THREE.MeshBasicMaterial({
-      color:      0x333355, // placeholder color until texture loads
-      transparent:true,
-      opacity:    1,
+      color:       0xe8e8e8, // light-grey placeholder
+      transparent: true,
+      opacity:     1,
     });
     const plane = new THREE.Mesh(planeGeo, planeMat);
-    plane.position.z = 0.04;
+    plane.position.z = 0.03;
 
-    // Load texture lazily
-    const loader = new THREE.TextureLoader();
-    loader.load(
+    // Lazy-load texture
+    new THREE.TextureLoader().load(
       photoData.url,
-      (tex) => {
+      tex => {
         tex.encoding    = THREE.sRGBEncoding;
         planeMat.map    = tex;
         planeMat.color.setHex(0xffffff);
         planeMat.needsUpdate = true;
-      },
-      undefined,
-      () => {
-        // On error: keep placeholder
       }
     );
 
@@ -365,9 +351,8 @@ class Universe {
     group.add(frame);
     group.add(plane);
 
-    // Store metadata for interaction
-    group.userData = { photoData, index, plane, planeMat };
-    plane.userData = { isPhoto: true, parent: group, photoData };
+    group.userData    = { photoData };
+    plane.userData    = { isPhoto: true, parent: group, photoData };
 
     return group;
   }
@@ -376,7 +361,6 @@ class Universe {
     if (!this._photoGroup) return;
 
     for (const mesh of this._photoMeshes) {
-      // Dispose geometry and materials
       mesh.traverse(child => {
         if (child.isMesh) {
           child.geometry.dispose();
@@ -387,28 +371,31 @@ class Universe {
     }
 
     this.sm.scene.remove(this._photoGroup);
-    this._photoGroup  = null;
-    this._photoMeshes = [];
+    this._photoGroup   = null;
+    this._photoMeshes  = [];
     this._hoveredPhoto = null;
+    document.body.style.cursor = 'none';
   }
 
-  // ─── Galaxy mode update ─────────────────────────────────────────────────
+  // ─── Galaxy mode ─────────────────────────────────────────────────────────
 
   _updateGalaxyMode(dt, t) {
-    // Slowly rotate photo world
-    if (this._photoGroup) {
-      this._photoGroup.rotation.y += 0.0008;
+    // Keep camera pointed at gallery centre
+    this.sm.camera.lookAt(0, 0, 0);
 
-      // Float photos up/down individually
+    // Slowly orbit the photo world
+    if (this._photoGroup) {
+      this._photoGroup.rotation.y += 0.0007;
+
+      // Individual float
       this._photoMeshes.forEach((m, i) => {
-        m.position.y += Math.sin(t * 0.6 + i * 1.1) * 0.003;
+        m.position.y += Math.sin(t * 0.55 + i * 1.2) * 0.003;
       });
     }
 
-    // Raycast for photo hover
     this._updatePhotoHover();
 
-    // ESC = exit
+    // ESC = exit galaxy
     if (this.controls.keys.escape) {
       this.controls.consumeEscape();
       this._exitGalaxy();
@@ -420,32 +407,26 @@ class Universe {
 
     this._raycaster.setFromCamera(this._mouse, this.sm.camera);
 
-    // Collect all photo planes
     const planes = [];
-    this._photoMeshes.forEach(group => {
-      group.traverse(child => {
-        if (child.userData && child.userData.isPhoto) planes.push(child);
-      });
-    });
+    this._photoMeshes.forEach(grp =>
+      grp.traverse(child => { if (child.userData.isPhoto) planes.push(child); })
+    );
 
     const hits = this._raycaster.intersectObjects(planes, false);
 
     if (hits.length > 0) {
       const hit = hits[0].object;
       if (this._hoveredPhoto !== hit) {
-        // Un-hover previous
         if (this._hoveredPhoto) {
-          gsap.to(this._hoveredPhoto.parent.scale, { x:1, y:1, z:1, duration:0.2 });
-          this._hoveredPhoto.material.emissive && (this._hoveredPhoto.material.emissiveIntensity = 0);
+          gsap.to(this._hoveredPhoto.parent.scale, { x: 1, y: 1, z: 1, duration: 0.2 });
         }
         this._hoveredPhoto = hit;
-        // Hover effect: scale up parent group
-        gsap.to(hit.parent.scale, { x:1.06, y:1.06, z:1.06, duration:0.2 });
+        gsap.to(hit.parent.scale, { x: 1.07, y: 1.07, z: 1.07, duration: 0.2 });
         document.body.style.cursor = 'pointer';
       }
     } else {
       if (this._hoveredPhoto) {
-        gsap.to(this._hoveredPhoto.parent.scale, { x:1, y:1, z:1, duration:0.2 });
+        gsap.to(this._hoveredPhoto.parent.scale, { x: 1, y: 1, z: 1, duration: 0.2 });
         this._hoveredPhoto = null;
         document.body.style.cursor = 'none';
       }
@@ -454,12 +435,8 @@ class Universe {
 
   _openLightbox(photoMesh) {
     const { photoData } = photoMesh.userData;
-    const lb   = document.getElementById('lightbox');
-    const img  = document.getElementById('lightbox-img');
-    const cap  = document.getElementById('lightbox-caption');
-
-    img.src    = photoData.url;
-    cap.textContent = photoData.caption;
-    lb.classList.remove('hidden');
+    document.getElementById('lightbox-img').src     = photoData.url;
+    document.getElementById('lightbox-caption').textContent = photoData.caption;
+    document.getElementById('lightbox').classList.remove('hidden');
   }
 }

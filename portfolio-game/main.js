@@ -1,18 +1,15 @@
 /**
- * main.js
- * Entry point — wires everything together and runs the game loop.
+ * main.js — Entry point.
+ * Wires all modules together and runs the game loop.
  */
 
 (function () {
   'use strict';
 
-  // ─── Init ─────────────────────────────────────────────────────────────
+  const canvas = document.getElementById('canvas');
+  const loader = document.getElementById('loader');
 
-  const canvas   = document.getElementById('canvas');
-  const loader   = document.getElementById('loader');
-
-  let sceneManager, controls, player, universe;
-  let clock, running = false;
+  let sceneManager, controls, player, universe, clock;
 
   function init() {
     clock        = new THREE.Clock();
@@ -21,50 +18,40 @@
     player       = new Player(sceneManager.scene, controls);
     universe     = new Universe(sceneManager, player, controls);
 
-    // Add lights to scene
+    // Add lights (defined in SceneManager but added to scene here)
     sceneManager.scene.add(sceneManager.ambientLight);
     sceneManager.scene.add(sceneManager.dirLight);
 
-    // Kick off
-    running = true;
     requestAnimationFrame(loop);
 
-    // Hide loader after a short beat to let WebGL warm up
-    setTimeout(hideLoader, 800);
+    // Small delay so WebGL finishes first frame before fading loader
+    setTimeout(hideLoader, 700);
   }
 
   function hideLoader() {
     loader.classList.add('fade-out');
-    setTimeout(() => { loader.style.display = 'none'; }, 900);
+    setTimeout(() => { loader.style.display = 'none'; }, 800);
   }
 
-  // ─── Main loop ───────────────────────────────────────────────────────
-
   function loop() {
-    if (!running) return;
-
-    const dt = Math.min(clock.getDelta(), 0.05); // cap at 50ms for safety
+    const dt = Math.min(clock.getDelta(), 0.05);
     const t  = clock.getElapsedTime();
 
-    // Update player
+    // Only update player movement when in space (not inside a galaxy)
+    // player.movable flag handles this internally, but we always call
+    // update so the float animation keeps running
     player.update(dt, t, sceneManager.camera);
 
-    // Update universe (galaxies, camera follow, interactions)
     universe.update(dt, t);
 
-    // Render
     sceneManager.render(sceneManager.scene);
 
     requestAnimationFrame(loop);
   }
 
-  // ─── Start ────────────────────────────────────────────────────────────
-
-  // THREE.js is loaded synchronously from CDN; start once DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
-
 })();
